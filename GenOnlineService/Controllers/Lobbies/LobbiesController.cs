@@ -315,6 +315,7 @@ namespace GenOnlineService.Controllers
 					&& data.ContainsKey("max_cam_height")
 					&& data.ContainsKey("exe_crc")
 					&& data.ContainsKey("ini_crc")
+					&& data.ContainsKey("anticheat_id")
 					)
 					{
 						string? strName = data["name"].GetString();
@@ -332,6 +333,7 @@ namespace GenOnlineService.Controllers
 						UInt16 maxCamHeight = Convert.ToUInt16(data["max_cam_height"].GetDouble()); // client sends this as a float...
 						UInt32 exe_crc = data["exe_crc"].GetUInt32();
 						UInt32 ini_crc = data["ini_crc"].GetUInt32();
+						EKnownAnticheatID anticheatID = (EKnownAnticheatID)data["anticheat_id"].GetInt32();
 
 						// Input validation
 						if (strName != null && strName.Length > 255)
@@ -379,7 +381,7 @@ namespace GenOnlineService.Controllers
 								string strDisplayName = await Database.Users.GetDisplayName(db, user_id);
 
 								Int64 newLobbyID = await _lobbyManager.CreateLobby(db, playerSession, strDisplayName, strName, strMapName, strMapPath, bMapOfficial, maxPlayers, strIPAddr,
-									hostPreferredPort, bVanillaTeamsOnly, bTrackStats, starting_cash, bPassworded, strPassword, playerSession.networkRoomID, bAllowObservers, maxCamHeight, exe_crc, ini_crc, ELobbyType.CustomGame);
+									hostPreferredPort, bVanillaTeamsOnly, bTrackStats, starting_cash, bPassworded, strPassword, playerSession.networkRoomID, bAllowObservers, maxCamHeight, exe_crc, ini_crc, ELobbyType.CustomGame, anticheatID);
 
 								if (newLobbyID >= 0)
 								{

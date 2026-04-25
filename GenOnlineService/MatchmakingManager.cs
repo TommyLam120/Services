@@ -16,6 +16,7 @@
 **    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+using Database;
 using Discord.Rest;
 using GenOnlineService;
 using Microsoft.AspNetCore.Authorization;
@@ -292,6 +293,8 @@ static class MatchmakingManager
 		public UInt32 ExeCRC { get; private set; }
 		public UInt32 IniCRC { get; private set; }
 
+		public EKnownAnticheatID AnticheatID { get; private set; }
+
 		public int eloExpansionIteration { get; private set; } = 1; // 1 * EloExpansionValue, matches the initial value
 
         public void ExpandElo()
@@ -461,7 +464,7 @@ static class MatchmakingManager
 			}
 
 			// must have space for all users in the rhs bucket, and CRCs must match
-			if (!HasSpaceForUsers(bucketToMerge.CurrentMemberCount(), bucketToMerge.ExeCRC, bucketToMerge.IniCRC))
+			if (!HasSpaceForUsers(bucketToMerge.CurrentMemberCount(), bucketToMerge.ExeCRC, bucketToMerge.IniCRC, bucketToMerge.AnticheatID))
 			{
 				return false;
 			}
@@ -581,7 +584,7 @@ static class MatchmakingManager
 			return false;
 		}
 
-		public bool HasSpaceForUsers(int numUsers, UInt32 exe_crc, UInt32 ini_crc)
+		public bool HasSpaceForUsers(int numUsers, UInt32 exe_crc, UInt32 ini_crc, EKnownAnticheatID anticheatID)
 		{
 			// if we're already counting down, dont let people join, just pretend we are full
 			if (m_bHasStartedCountdown || m_bWaitingOnLobbyJoins)
@@ -591,6 +594,12 @@ static class MatchmakingManager
 
 			// crcs must match too
 			if (exe_crc != ExeCRC || ini_crc != IniCRC)
+			{
+				return false;
+			}
+
+			// must be running same AC
+			if (anticheatID != AnticheatID)
 			{
 				return false;
 			}
@@ -643,7 +652,7 @@ static class MatchmakingManager
 			// cant be blocked by others in this bucket
 			if (!IsJoiningUserBlockedByOrHasBlockedAnyBucketMember(playerSession, playerSession.m_UserID))
             {
-                if (HasSpaceForUsers(1, playerSession.ExeCRC, playerSession.IniCRC))
+                if (HasSpaceForUsers(1, playerSession.ExeCRC, playerSession.IniCRC, playerSession.AnticheatID))
                 {
                     m_lstMembers.Add(new MatchmakingBucketMember(playerSession));
 
@@ -664,7 +673,7 @@ static class MatchmakingManager
             return false;
 		}
 
-		public MatchmakingBucket(UInt16 playlistID, UserSession owningSession, int minPlayers, int desiredPlayers, ConcurrentList<int> mapIndices, UInt32 exe_crc, UInt32 ini_crc)
+		public MatchmakingBucket(UInt16 playlistID, UserSession owningSession, int minPlayers, int desiredPlayers, ConcurrentList<int> mapIndices, UInt32 exe_crc, UInt32 ini_crc, EKnownAnticheatID anticheatID)
 		{
 			PlaylistID = playlistID;
 			MinPlayers = minPlayers;
@@ -672,6 +681,7 @@ static class MatchmakingManager
 			lstMapIndices = mapIndices;
 			ExeCRC = exe_crc;
 			IniCRC = ini_crc;
+			AnticheatID = anticheatID;
 
 			m_lstMembers.Add(new MatchmakingBucketMember(owningSession));
 		}
@@ -794,7 +804,8 @@ static class MatchmakingManager
 								await using var db = await factory.CreateDbContextAsync();
 
 								m_LobbyID = await lobbyManager.CreateLobby(db, dummyHostUser, dummyHostUserData.m_strDisplayName, "Quickmatch Lobby", strMapName, strMapPath + ".map",
-										true, playlist.DesiredPlayers, "", 12345, false, true, 10000, false, String.Empty, -5, false, Constants.g_DefaultCameraMaxHeight, 123, 456, ELobbyType.QuickMatch);
+										true, playlist.DesiredPlayers, "", 12345, false, true, 10000, false, String.Empty, -5, false, Constants.g_DefaultCameraMaxHeight, 123, 456, ELobbyType.QuickMatch,
+										EKnownAnticheatID.NONE); // NOTE: Anticheat doesnt matter here, it's a dummy lobby for quickmatch, the anticheat was already checked during the bucketing process
 
 								// tell both to join our lobby
 								WebSocketMessage_MatchmakerJoinLobby joinAction = new WebSocketMessage_MatchmakerJoinLobby();
@@ -1122,7 +1133,7 @@ static class MatchmakingManager
 									if (mmBucket.IsAvgEloWithinThreshold(thisSessionUserData.GameStats.EloRating, EloConfig.EloExpansionValue))
 									{
 										// TODO_MATCHMAKING: Squads
-										if (mmBucket.HasSpaceForUsers(1, thisSession.ExeCRC, thisSession.IniCRC))
+										if (mmBucket.HasSpaceForUsers(1, thisSession.ExeCRC, thisSession.IniCRC, thisSession.AnticheatID))
 										{
 											// do the maps overlap? if so we can join
 											if (mmBucket.DoMapSelectionsIntersect(thisSession.MatchmakingMapIndicies))
@@ -1145,7 +1156,7 @@ static class MatchmakingManager
 								// didnt find a bucket? make one
 								if (bucketInUse == null)
 								{
-									MatchmakingBucket newBucket = new MatchmakingBucket(playlist.PlaylistID, thisSession, playlist.MinPlayers, playlist.DesiredPlayers, thisSession.MatchmakingMapIndicies, thisSession.ExeCRC, thisSession.IniCRC);
+									MatchmakingBucket newBucket = new MatchmakingBucket(playlist.PlaylistID, thisSession, playlist.MinPlayers, playlist.DesiredPlayers, thisSession.MatchmakingMapIndicies, thisSession.ExeCRC, thisSession.IniCRC, thisSession.AnticheatID);
 									m_dictMatchmakingBuckets[thisSession.MatchmakingPlaylistID].Add(newBucket);
 									bucketInUse = newBucket;
 								}
@@ -1187,12 +1198,13 @@ static class MatchmakingManager
 		m_lstBucketsPendingDeletion.Add(bucket);
 	}
 
-	public static async Task RegisterPlayer(UserSession plr, UInt16 playlistID, List<int> mapIndices, UInt32 exe_crc, UInt32 ini_crc)
+	public static async Task RegisterPlayer(UserSession plr, UInt16 playlistID, List<int> mapIndices, UInt32 exe_crc, UInt32 ini_crc, EKnownAnticheatID anticheatID)
 	{
 		plr.MatchmakingPlaylistID = playlistID;
 		plr.MatchmakingMapIndicies = new ConcurrentList<int>(mapIndices);
 		plr.ExeCRC = exe_crc;
 		plr.IniCRC = ini_crc;
+		plr.AnticheatID = anticheatID;
 		lstSessions.Add(new WeakReference<UserSession>(plr));
 
         await SendMatchmakingMessage(plr, "Started matchmaking... Searching for players...");

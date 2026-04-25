@@ -16,6 +16,7 @@
 **    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+using Database;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -746,6 +747,7 @@ namespace GenOnlineService.Controllers
 
 					if (data != null
 						&& data.ContainsKey("preferred_port")
+						&& data.ContainsKey("anticheat_id")
 						)
 					{
 
@@ -759,6 +761,7 @@ namespace GenOnlineService.Controllers
 							{
 								UInt16 userPreferredPort = data["preferred_port"].GetUInt16();
 								bool bHasMap = data["has_map"].GetBoolean();
+								EKnownAnticheatID anticheatID = (EKnownAnticheatID)data["anticheat_id"].GetInt32();
 
 								// does the lobby have a password?
 								bool bLobbyPassworded = lobby.IsPassworded;
@@ -787,6 +790,14 @@ namespace GenOnlineService.Controllers
 										result.success = false;
 										return result;
 									}
+								}
+
+								// must be running same AC
+								if (anticheatID != lobby.AnticheatID)
+								{
+									Response.StatusCode = (int)HttpStatusCode.ExpectationFailed;
+									result.success = false;
+									return result;
 								}
 
 								UserSession? playerSession = WebSocketManager.GetSessionFromUser(user_id, sessionType);

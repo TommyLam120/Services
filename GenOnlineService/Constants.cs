@@ -868,8 +868,10 @@ namespace GenOnlineService
 		public UInt16 MatchmakingPlaylistID = 0;
 		public ConcurrentList<int> MatchmakingMapIndicies = new();
 
+		// NOTE: These are not set on login, only when in quickmatch!
 		public UInt32 ExeCRC = 0;
 		public UInt32 IniCRC = 0;
+		public EKnownAnticheatID AnticheatID = EKnownAnticheatID.NONE;
 
 		private ConcurrentList<UInt64> m_lstHistoricMatchIDs = new();
 		private ConcurrentDictionary<UInt64, int> m_lstHistoricMatchIDToSlotIndexMap = new();
@@ -1194,9 +1196,24 @@ namespace GenOnlineService
 					}
 					*/
 
-					using var cts = CancellationTokenSource.CreateLinkedTokenSource(externalToken);
-					cts.CancelAfter(TimeSpan.FromMilliseconds(500));
-					await m_SockInternal.SendAsync(buffer, messageType, true, cts.Token);
+					CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(externalToken);
+					try
+					{
+						cts.CancelAfter(TimeSpan.FromMilliseconds(500));
+						await m_SockInternal.SendAsync(buffer, messageType, true, cts.Token);
+					}
+					finally
+					{
+						try
+						{
+							cts.Dispose();
+						}
+						catch (ObjectDisposedException)
+						{
+							// The linked token may be disposed if the external token (parent CancellationTokenSource)
+							// fires its timeout while we're disposing this instance. This is safe to ignore.
+						}
+					}
 				}
 				catch
 				{
@@ -2436,7 +2453,10 @@ namespace GenOnlineService
 		SOCIAL_FRIENDS_OVERALL_STATUS_UPDATE = 35,
 		SOCIAL_FRIEND_FRIEND_REQUEST_ACCEPTED_BY_TARGET = 36,
 		SOCIAL_FRIENDS_LIST_DIRTY = 37,
-        SOCIAL_CANT_ADD_FRIEND_LIST_FULL = 38
+        SOCIAL_CANT_ADD_FRIEND_LIST_FULL = 38,
+		PROBE_RESP = 39,
+		AC_REGISTER_PLAYER = 40,
+		AC_DEREGISTER_PLAYER = 41
 	};
 
 	public static class UserPresence
@@ -2635,6 +2655,18 @@ namespace GenOnlineService
 	{
 		public int num_online { get; set; } = 0;
 		public int num_pending { get; set; } = 0;
+	}
+
+	public class WebSocketMessage_ACRegisterPlayer : WebSocketMessage
+	{
+		public Int64 user_id { get; set; }
+		public string mwid { get; set; } = String.Empty;
+	}
+
+	public class WebSocketMessage_ACDeregisterPlayer : WebSocketMessage
+	{
+		public Int64 user_id { get; set; }
+		public string mwid { get; set; } = String.Empty;
 	}
 
 	public class WebSocketMessage_NetworkDisconnectPlayer : WebSocketMessage

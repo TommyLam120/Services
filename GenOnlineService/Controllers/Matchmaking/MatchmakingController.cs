@@ -67,6 +67,7 @@ namespace GenOnlineService.Controllers
 					&& data.ContainsKey("maps")
 					&& data.ContainsKey("exe_crc")
 					&& data.ContainsKey("ini_crc")
+					&& data.ContainsKey("anticheat_id")
 					)
 					{
 						UInt16 playlistID = data["playlist"].GetUInt16();
@@ -74,6 +75,7 @@ namespace GenOnlineService.Controllers
 						List<int> mapIndices = array.Select(x => x.GetInt32()).ToList();
 						UInt32 exe_crc = data["exe_crc"].GetUInt32();
 						UInt32 ini_crc = data["ini_crc"].GetUInt32();
+						EKnownAnticheatID anticheatID = (EKnownAnticheatID)data["anticheat_id"].GetUInt16();
 
 						Int64 user_id = TokenHelper.GetUserID(this);
 						EUserSessionType sessionType = TokenHelper.GetSessionType(this);
@@ -83,7 +85,7 @@ namespace GenOnlineService.Controllers
 
 							if (playerSession != null)
 							{
-								await MatchmakingManager.RegisterPlayer(playerSession, playlistID, mapIndices, exe_crc, ini_crc);
+								await MatchmakingManager.RegisterPlayer(playerSession, playlistID, mapIndices, exe_crc, ini_crc, anticheatID);
 							}
 						}
 					}

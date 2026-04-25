@@ -278,11 +278,13 @@ namespace GenOnlineService
         public const int maxLobbySize = 8;
 		public LobbyMember[] Members { get; private set; } = new LobbyMember[maxLobbySize];
 
+		public EKnownAnticheatID AnticheatID { get; private set; }  = EKnownAnticheatID.NONE;
+
 		[JsonIgnore]
 		public Dictionary<Int64, DateTime> TimeMemberLeft { get; private set; } = new();
 
 		// Records the first time each player's in-game WebSocket connection dropped (i.e., when they first "quit"
-		// while the match was in progress). Only the first disconnect is stored â€” reconnects do not reset it.
+		// while the match was in progress). Only the first disconnect is stored — reconnects do not reset it.
 		// Used by DetermineLobbyWinnerIfNotPresent to find who abandoned first (= loser) vs last (= winner).
 		[JsonIgnore]
 		public Dictionary<Int64, DateTime> TimePlayerAbandonedIngame { get; private set; } = new();
@@ -336,11 +338,27 @@ namespace GenOnlineService
 
 		public Lobby(Int64 lobby_id, UserSession owner, string name, ELobbyState state, string map_name, string map_path, bool vanilla_teams, UInt32 starting_cash, bool limit_superweapons,
 			bool track_stats, bool passworded, string password, bool map_official, int rng_seed, Int16 network_room, bool allow_observers, UInt16 max_cam_height, UInt32 exe_crc, UInt32 ini_crc,
-			int max_players, ELobbyType lobbyType)
+			int max_players, ELobbyType lobbyType, EKnownAnticheatID inAnticheatID)
 		{
 			LobbyID = lobby_id;
 			Owner = owner.m_UserID;
-			Name = String.Format("[{0}] {1}", owner.m_strContinent, name);
+
+			string strAnticheatName = "OTHER AC";
+			if (inAnticheatID == EKnownAnticheatID.NONE)
+			{
+				strAnticheatName = "\u26C9NO AC";
+			}
+			else if (inAnticheatID == EKnownAnticheatID.GO_INTEGRATED_AC)
+			{
+				strAnticheatName = "\u26CAGOAC";
+			}
+			else if (inAnticheatID == EKnownAnticheatID.EASY_ANTICHEAT)
+			{
+				strAnticheatName = "\u26CAEAC";
+			}
+
+
+			Name = String.Format("[{0}][{1}] {2}", owner.m_strContinent, strAnticheatName, name);
 			Region = String.Format("{0}", owner.GetFullContinentName());
 			m_dHostLatitude = owner.m_dLatitude;
 			m_dHostLongitude = owner.m_dLongitude;
@@ -362,6 +380,7 @@ namespace GenOnlineService
 			MaximumCameraHeight = max_cam_height;
 			LobbyType = lobbyType;
 			Members = new LobbyMember[maxLobbySize];
+			AnticheatID = inAnticheatID;
 
 			// create default slots
 			for (UInt16 i = 0; i < maxLobbySize; ++i)
@@ -682,6 +701,13 @@ namespace GenOnlineService
 							joiningPlayerMsg.user_id = memberEntry.UserID;
 							joiningPlayerMsg.preferred_port = memberEntry.Port;
 							playerSession.QueueWebsocketSend(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(joiningPlayerMsg)));
+
+							// send register player
+							WebSocketMessage_ACRegisterPlayer joiningPlayerACMsg = new WebSocketMessage_ACRegisterPlayer();
+							joiningPlayerACMsg.msg_id = (int)EWebSocketMessageID.AC_REGISTER_PLAYER;
+							joiningPlayerACMsg.user_id = memberEntry.UserID;
+							joiningPlayerACMsg.mwid = memberEntry.MiddlewareUserID;
+							playerSession.QueueWebsocketSend(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(joiningPlayerACMsg)));
 						}
 
 						if (remoteSession != null)
@@ -693,6 +719,13 @@ namespace GenOnlineService
 							existingPlayerMsg.user_id = playerSession.m_UserID;
 							existingPlayerMsg.preferred_port = userPreferredPort;
 							remoteSession.QueueWebsocketSend(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(existingPlayerMsg)));
+
+							// send register player
+							WebSocketMessage_ACRegisterPlayer existingPlayerACMsg = new WebSocketMessage_ACRegisterPlayer();
+							existingPlayerACMsg.msg_id = (int)EWebSocketMessageID.AC_REGISTER_PLAYER;
+							existingPlayerACMsg.user_id = playerSession.m_UserID;
+							existingPlayerACMsg.mwid = playerSession.GetMiddlewareID();
+							remoteSession.QueueWebsocketSend(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(existingPlayerACMsg)));
 						}
 					}
 				}
@@ -721,6 +754,23 @@ namespace GenOnlineService
 			LobbyMember placeholderMember = new LobbyMember(this, null, -1, String.Empty, String.Empty, 0, -1, -1, -1, EPlayerType.SLOT_OPEN, member.SlotIndex, true);
 			Members[member.SlotIndex] = placeholderMember;
 			TimeMemberLeft[UserID] = DateTime.UtcNow;
+
+			// AC dergister
+			WebSocketMessage_ACDeregisterPlayer remotePlayerAcMsg = new WebSocketMessage_ACDeregisterPlayer();
+			remotePlayerAcMsg.msg_id = (int)EWebSocketMessageID.AC_DEREGISTER_PLAYER;
+			remotePlayerAcMsg.user_id = member.UserID;
+			remotePlayerAcMsg.mwid = member.MiddlewareUserID;
+			foreach (LobbyMember remoteMember in Members)
+			{
+				if (remoteMember.GetSession().TryGetTarget(out UserSession? remoteSession))
+				{
+					if (remoteSession != null)
+					{
+						Console.WriteLine("Sent AC deregister for user {0} to user {1}", member.UserID, remoteMember.UserID);
+						remoteSession.QueueWebsocketSend(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(remotePlayerAcMsg)));
+					}
+				}
+			}
 
 			// send signal to disconnect (only if not ingame, ingame we let the client handle it so a service disconnect doesnt end the game)
 			if (State != ELobbyState.INGAME)
@@ -1172,6 +1222,14 @@ namespace GenOnlineService
 		QuickMatch = 1
 	}
 
+	public enum EKnownAnticheatID
+	{
+		NONE = -1,
+		GO_INTEGRATED_AC = 0,
+		EASY_ANTICHEAT = 9481
+	}
+
+
 	public class LobbyManager
 	{
 		private ConcurrentDictionary<Int64, Lobby> m_dictLobbies = new();
@@ -1217,7 +1275,7 @@ namespace GenOnlineService
 
 		public async Task<Int64> CreateLobby(AppDbContext _db, UserSession owningSession, string strOwnerDisplayName, string strName, string strMapName, string strMapPath, bool bMapOfficial, int maxPlayers, string HostIPAddr,
 			UInt16 hostPreferredPort, bool bVanillaTeams, bool bTrackStats, UInt32 default_starting_cash, bool bPassworded, String strPassword, Int16 parentNetworkRoom, bool bAllowObservers,
-			UInt16 maxCamHeight, UInt32 exe_crc, UInt32 ini_crc, ELobbyType lobbyType)
+			UInt16 maxCamHeight, UInt32 exe_crc, UInt32 ini_crc, ELobbyType lobbyType, EKnownAnticheatID anticheatID)
 		{
 			Console.WriteLine("Created lobby");
 			// cant own two lobbies at once, unless in gameplay
@@ -1246,7 +1304,7 @@ namespace GenOnlineService
 				}
 			}
 
-			Lobby newLobby = new Lobby(newLobbyID, owningSession, strName, ELobbyState.GAME_SETUP, strMapName, strMapPath, bVanillaTeams, starting_cash, bLimitSuperweapons, bTrackStats, bPassworded, strPassword, bMapOfficial, rng_seed, parentNetworkRoom, bAllowObservers, maxCamHeight, exe_crc, ini_crc, maxPlayers, lobbyType);
+			Lobby newLobby = new Lobby(newLobbyID, owningSession, strName, ELobbyState.GAME_SETUP, strMapName, strMapPath, bVanillaTeams, starting_cash, bLimitSuperweapons, bTrackStats, bPassworded, strPassword, bMapOfficial, rng_seed, parentNetworkRoom, bAllowObservers, maxCamHeight, exe_crc, ini_crc, maxPlayers, lobbyType, anticheatID);
 			m_dictLobbies[newLobbyID] = newLobby;
 
 			
