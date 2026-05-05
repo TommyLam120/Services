@@ -2423,7 +2423,7 @@ namespace GenOnlineService
 		NETWORK_ROOM_MARK_READY = 5,
 		LOBBY_CURRENT_LOBBY_UPDATE = 6,
 		NETWORK_ROOM_LOBBY_LIST_UPDATE = 7,
-		UNUSED_PLACEHOLDER = 8, // this was relay upgrade, was removed. We can re-use it later, but service needs this placeholder
+		ANTICHEAT_MESSAGE = 8,
 		PLAYER_NAME_CHANGE = 9,
 		LOBBY_ROOM_CHAT_FROM_CLIENT = 10,
 		LOBBY_CHAT_FROM_SERVER = 11,
@@ -2688,6 +2688,12 @@ namespace GenOnlineService
 		public Int64 target_user_id { get; set; }
 	}
 	public class WebSocketMessage_SignalBidirectional : WebSocketMessage
+	{
+		public Int64 target_user_id { get; set; }
+		public List<byte>? payload { get; set; }
+	}
+
+	public class WebSocketMessage_AnticheatMessage : WebSocketMessage
 	{
 		public Int64 target_user_id { get; set; }
 		public List<byte>? payload { get; set; }

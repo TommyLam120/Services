@@ -54,4 +54,36 @@ namespace GenOnlineService.Controllers
 			}
 		}
 	}
+
+	[ApiController]
+	[Route("env/{environment}/contract/{contract_version}/[controller]")]
+	public class AnticheatConfigController : ControllerBase
+	{
+		public AnticheatConfigController()
+		{
+
+		}
+
+		[HttpGet(Name = "GetAnticheatConfig")]
+
+		public async Task<string?> Get()
+		{
+			try
+			{
+				string strFileData = await System.IO.File.ReadAllTextAsync(Path.Combine("data", "anticheatconfig.dat"));
+
+				// 0 = normal behavior
+				// 1 = force goac
+				// 2 = force eac
+
+				Response.StatusCode = (int)HttpStatusCode.OK;
+				return strFileData;
+			}
+			catch
+			{
+				Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+				return null;
+			}
+		}
+	}
 }

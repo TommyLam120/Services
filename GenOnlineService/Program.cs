@@ -33,6 +33,7 @@ using Org.BouncyCastle.Pkcs;
 using Org.BouncyCastle.Security;
 using Sentry;
 using System.Collections.Concurrent;
+using System.Configuration;
 using System.Drawing;
 using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Headers;
@@ -509,12 +510,24 @@ namespace GenOnlineService
 					return Task.CompletedTask;
 				}
 
-				string strExpectedIP = context.Principal.FindFirst(JwtRegisteredClaimNames.Address).Value;
-				string currentIP = IPHelpers.NormalizeIP(context.HttpContext.Connection.RemoteIpAddress?.ToString());
-				if (strExpectedIP != currentIP)
+				if (Program.g_Config != null)
 				{
-					context.Fail("Failed Validation #8 - IP mismatch");
+					IConfiguration? jwtSettings = Program.g_Config.GetSection("JwtSettings");
+
+					if (jwtSettings != null)
+					{
+						if (jwtSettings.GetValue<bool>("enforce_ip_match"))
+						{
+							string strExpectedIP = context.Principal.FindFirst(JwtRegisteredClaimNames.Address).Value;
+							string currentIP = IPHelpers.NormalizeIP(context.HttpContext.Connection.RemoteIpAddress?.ToString());
+							if (strExpectedIP != currentIP)
+							{
+								context.Fail("Failed Validation #8 - IP mismatch");
+							}
+						}
+					}
 				}
+
 #pragma warning restore CS8602 // Dereference of a possibly null reference.
 #pragma warning restore CS8604 // Dereference of a possibly null reference.
 			}
@@ -716,26 +729,32 @@ namespace GenOnlineService
 
 			builder.Services.AddSingleton<LobbyManager>();
 
-			builder.Services.AddRateLimiter(options =>
-			{
-				options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
-				{
-					// Use authenticated user ID or fallback to IP address
-					var userKey = httpContext.User.Identity?.IsAuthenticated == true
-						? httpContext.User.Identity.Name
-						: httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+			var rateLimitingSettings = Program.g_Config.GetSection("RateLimiting");
+			bool bUseBuiltinRateLimiter = rateLimitingSettings.GetValue<bool>("use_builtin_ratelimiter"); // use built in Kestrel/dotnet rate limiting if you do not have a reverse proxy or other rate limiter in front of service
 
-					return RateLimitPartition.GetTokenBucketLimiter(userKey, _ => new TokenBucketRateLimiterOptions
+			if (bUseBuiltinRateLimiter)
+			{
+				builder.Services.AddRateLimiter(options =>
+				{
+					options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
 					{
-						TokenLimit = 50, // max burst
-						TokensPerPeriod = 10, // refill rate
-						ReplenishmentPeriod = TimeSpan.FromSeconds(5),
-						AutoReplenishment = true,
-						QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-						QueueLimit = 10
+						// Use authenticated user ID or fallback to IP address
+						var userKey = httpContext.User.Identity?.IsAuthenticated == true
+							? httpContext.User.Identity.Name
+							: httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+
+						return RateLimitPartition.GetTokenBucketLimiter(userKey, _ => new TokenBucketRateLimiterOptions
+						{
+							TokenLimit = 50, // max burst
+							TokensPerPeriod = 10, // refill rate
+							ReplenishmentPeriod = TimeSpan.FromSeconds(5),
+							AutoReplenishment = true,
+							QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+							QueueLimit = 10
+						});
 					});
 				});
-			});
+			}
 
 			builder.Services.AddCors(options =>
 			{
@@ -1000,7 +1019,10 @@ namespace GenOnlineService
 			var app = builder.Build();
 			ServiceLocator.Services = app.Services;
 
-			app.UseRateLimiter();
+			if (bUseBuiltinRateLimiter)
+			{
+				app.UseRateLimiter();
+			}
 
 			// Enable response compression (must be early in pipeline)
 			app.UseResponseCompression();

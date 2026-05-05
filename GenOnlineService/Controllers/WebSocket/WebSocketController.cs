@@ -428,10 +428,6 @@ namespace GenOnlineService.Controllers
 						}
 					}
 				}
-				else if (msgID == EWebSocketMessageID.UNUSED_PLACEHOLDER)
-				{
-					// no-op
-				}
 				else if (msgID == EWebSocketMessageID.NETWORK_ROOM_CHANGE_ROOM)
 				{
 					if (data != null && data.ContainsKey("room"))
@@ -914,6 +910,50 @@ namespace GenOnlineService.Controllers
 									outboundSignal.target_user_id = sourceUserSession.m_UserID; // user here is the person who sent it to us
 									outboundSignal.payload = signal.payload;
 									byte[] bytesJSON = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(outboundSignal));
+
+									targetSession.QueueWebsocketSend(bytesJSON);
+									//Console.WriteLine("Signal out is: {0}", JsonSerializer.Serialize(outboundSignal));
+									//Console.WriteLine("SIGNAL SENT ({0} bytes) (from user {1} to user {2})", bytesJSON.Length, wsSess.m_UserID, sess.m_UserID);
+									//Console.WriteLine("MSG WAS: {0}", strMessage);
+									//break;
+								}
+							}
+						}
+						else
+						{
+							return;
+						}
+					}
+				}
+				else if (msgID == EWebSocketMessageID.ANTICHEAT_MESSAGE)
+				{
+					WebSocketMessage_AnticheatMessage? acMsg = JsonSerializer.Deserialize<WebSocketMessage_AnticheatMessage>(payload, JsonOpts);
+
+					if (acMsg != null)
+					{
+						// Our protocol is just [payload]
+						// And everything is in text.
+
+						// find the dest players connection
+						UserSession? targetSession = WebSocketManager.GetSessionFromUser(acMsg.target_user_id, EUserSessionType.GameClient); // network signals only goto game clients
+						if (targetSession != null)
+						{
+							Lobby? lobby = _lobbyManager.GetLobby(sourceUserSession.currentLobbyID);
+
+							if (lobby != null)
+							{
+								LobbyMember? targetUser = lobby.GetMemberFromUserID(targetSession.m_UserID);
+								LobbyMember? sourceUser = lobby.GetMemberFromUserID(sourceUserSession.m_UserID);
+
+								if (sourceUser != null && targetUser != null)
+								{
+									// now into json for our ws msg format
+									// NOTE: outbound msg doesnt need sender ID, we only need that to determine target on the server, everything else is included in the payload
+									WebSocketMessage_AnticheatMessage outboundACMsg = new WebSocketMessage_AnticheatMessage();
+									outboundACMsg.msg_id = (int)EWebSocketMessageID.ANTICHEAT_MESSAGE;
+									outboundACMsg.target_user_id = sourceUserSession.m_UserID; // user here is the person who sent it to us
+									outboundACMsg.payload = acMsg.payload;
+									byte[] bytesJSON = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(outboundACMsg));
 
 									targetSession.QueueWebsocketSend(bytesJSON);
 									//Console.WriteLine("Signal out is: {0}", JsonSerializer.Serialize(outboundSignal));
