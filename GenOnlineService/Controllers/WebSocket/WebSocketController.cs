@@ -865,6 +865,7 @@ namespace GenOnlineService.Controllers
 									joiningPlayerMsg.lobby_id = sourceUserSession.currentLobbyID;
 									joiningPlayerMsg.user_id = targetUser.UserID;
 									joiningPlayerMsg.preferred_port = targetUser.Port;
+									joiningPlayerMsg.middleware_id = targetUser.MiddlewareUserID;
 									sourceUserSession.QueueWebsocketSend(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(joiningPlayerMsg)));
 
 									// send the reverse to the target player
@@ -873,6 +874,7 @@ namespace GenOnlineService.Controllers
 									existingPlayerMsg.lobby_id = sourceUserSession.currentLobbyID;
 									existingPlayerMsg.user_id = sourceUser.UserID;
 									existingPlayerMsg.preferred_port = sourceUser.Port;
+									existingPlayerMsg.middleware_id = sourceUser.MiddlewareUserID;
 									targetSession.QueueWebsocketSend(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(existingPlayerMsg)));
 								}
 							}

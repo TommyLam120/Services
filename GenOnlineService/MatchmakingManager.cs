@@ -470,7 +470,8 @@ static class MatchmakingManager
 			}
 
 			// must be within the eloThreshold
-			if (!IsAvgEloWithinThreshold(bucketToMerge.GetAvgElo(), eloExpansionIteration * EloConfig.EloExpansionValue))
+			int eloExpansionToUse = (bucketToMerge.GetAvgElo() >= EloConfig.HighEloThreshold || GetAvgElo() >= EloConfig.HighEloThreshold) ? EloConfig.EloExpansionValue_HighELO : EloConfig.EloExpansionValue_Standard;
+			if (!IsAvgEloWithinThreshold(bucketToMerge.GetAvgElo(), eloExpansionIteration * eloExpansionToUse))
 			{
 				return false;
 			}
@@ -618,7 +619,7 @@ static class MatchmakingManager
             return (avgElo >= lowerEloBound && avgElo <= upperEloBound);
         }
 
-		private int GetAvgElo()
+		public int GetAvgElo()
 		{
 			int numMembers = m_lstMembers.Count;
 
@@ -1137,7 +1138,8 @@ static class MatchmakingManager
 								foreach (MatchmakingBucket mmBucket in m_dictMatchmakingBuckets[thisSession.MatchmakingPlaylistID])
 								{
 									// must be within initial elo threshold for a join, otherwise we'll make a bucket and try to merge buckets using the elo iteration expansion algorithm
-									if (mmBucket.IsAvgEloWithinThreshold(thisSessionUserData.GameStats.EloRating, EloConfig.EloExpansionValue))
+									int eloExpansionToUse = (mmBucket.GetAvgElo() >= EloConfig.HighEloThreshold ||mmBucket.GetAvgElo() >= EloConfig.HighEloThreshold) ? EloConfig.EloExpansionValue_HighELO : EloConfig.EloExpansionValue_Standard;
+									if (mmBucket.IsAvgEloWithinThreshold(thisSessionUserData.GameStats.EloRating, eloExpansionToUse))
 									{
 										// TODO_MATCHMAKING: Squads
 										if (mmBucket.HasSpaceForUsers(1, thisSession.ExeCRC, thisSession.IniCRC, thisSession.AnticheatID))

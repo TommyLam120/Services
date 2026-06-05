@@ -2657,6 +2657,7 @@ namespace GenOnlineService
 		public Int64 lobby_id{ get; set; }
 		public Int64 user_id { get; set; }
 		public Int64 preferred_port { get; set; }
+		public string middleware_id { get; set; }
 	}
 
 	public class WebSocketMessage_FriendsOverallStatusUpdate : WebSocketMessage

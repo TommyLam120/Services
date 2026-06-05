@@ -700,6 +700,7 @@ namespace GenOnlineService
 							joiningPlayerMsg.lobby_id = LobbyID;
 							joiningPlayerMsg.user_id = memberEntry.UserID;
 							joiningPlayerMsg.preferred_port = memberEntry.Port;
+							joiningPlayerMsg.middleware_id = memberEntry.MiddlewareUserID;
 							playerSession.QueueWebsocketSend(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(joiningPlayerMsg)));
 
 							// send register player
@@ -718,6 +719,7 @@ namespace GenOnlineService
 							existingPlayerMsg.lobby_id = LobbyID;
 							existingPlayerMsg.user_id = playerSession.m_UserID;
 							existingPlayerMsg.preferred_port = userPreferredPort;
+							existingPlayerMsg.middleware_id = playerSession.GetMiddlewareID();
 							remoteSession.QueueWebsocketSend(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(existingPlayerMsg)));
 
 							// send register player
