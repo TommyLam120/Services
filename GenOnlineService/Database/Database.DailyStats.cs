@@ -20,7 +20,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using System.Text.Json;
 
-// TODO_EFCORE: When updating this, make sure we preserve old ON DUPLICATE behavior, to overwrite the old data since day_of_year key will be re-used
 public class DailyStat
 {
 	public DailyStat()
@@ -101,6 +100,7 @@ public static class DailyStatsManager
 			// Insert if new, otherwise update
 			if (entity == null)
 			{
+				g_StatsContainer = new DailyStat();
 				entity = g_StatsContainer;
 				db.DailyStats.Add(entity);
 			}
